@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agno Research Assistant</title>
+    <!-- 1. Import Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            max-width: 900px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background-color: #f4f4f9; 
+        }
+        .chat-container { 
+            background: white; 
+            border-radius: 16px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
+            overflow: hidden; 
+            height: 85vh; 
+            display: flex; 
+            flex-direction: column; 
+        }
+        .chat-header {
+            padding: 15px 20px;
+            background: #fff;
+            border-bottom: 1px solid #eee;
+            font-weight: 600;
+            color: #333;
+        }
+        .chat-history { 
+            flex: 1; 
+            overflow-y: auto; 
+            padding: 20px; 
+            scroll-behavior: smooth;
+        }
+        .message { 
+            margin-bottom: 20px; 
+            display: flex;
+            flex-direction: column;
+        }
+        .message.user { 
+            align-items: flex-end; 
+        }
+        .message.assistant { 
+            align-items: flex-start; 
+        }
+        .message-bubble { 
+            max-width: 80%; 
+            padding: 12px 18px; 
+            border-radius: 12px; 
+            position: relative;
+            line-height: 1.6;
+            font-size: 15px;
+        }
+        .message.user .message-bubble { 
+            background: #007AFF; 
+            color: white; 
+            border-radius: 18px 18px 4px 18px;
+        }
+        .message.assistant .message-bubble { 
+            background: #f0f2f5; 
+            color: #1c1e21; 
+            border-radius: 18px 18px 18px 4px;
+        }
+
+        /* --- MARKDOWN STYLING --- */
+        /* These styles make the rendered HTML look good inside the bubble */
+        .message-bubble h1, .message-bubble h2, .message-bubble h3 { 
+            margin-top: 10px; 
+            margin-bottom: 5px; 
+            font-weight: 600; 
+            line-height: 1.2;
+        }
+        .message-bubble h3 { font-size: 1.1em; }
+        .message-bubble p { margin: 0 0 10px 0; }
+        .message-bubble ul, .message-bubble ol { margin: 0 0 10px 20px; padding: 0; }
+        .message-bubble li { margin-bottom: 4px; }
+        .message-bubble code { 
+            font-family: Consolas, Monaco, 'Andale Mono', monospace; 
+            background: rgba(0,0,0,0.05); 
+            padding: 2px 4px; 
+            border-radius: 4px; 
+            font-size: 0.9em;
+        }
+        .message-bubble pre {
+            background: #2d2d2d;
+            color: #fff;
+            padding: 10px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        .message-bubble pre code {
+            background: transparent;
+            color: inherit;
+        }
+        /* Links in user bubble should be white, in assistant bubble blue */
+        .message.user .message-bubble a { color: #fff; text-decoration: underline; }
+        .message.assistant .message-bubble a { color: #007AFF; text-decoration: none; }
+        .message.assistant .message-bubble a:hover { text-decoration: underline; }
+
+        .input-area { 
+            padding: 20px; 
+            background: #fff;
+            border-top: 1px solid #eee; 
+            display: flex; 
+            gap: 12px; 
+        }
+        input { 
+            flex: 1; 
+            padding: 14px; 
+            border: 1px solid #e0e0e0; 
+            border-radius: 24px; 
+            outline: none; 
+            font-size: 16px; 
+            transition: border-color 0.2s;
+        }
+        input:focus { border-color: #007AFF; }
+        button { 
+            padding: 12px 24px; 
+            background: #007AFF; 
+            color: white; 
+            border: none; 
+            border-radius: 24px; 
+            cursor: pointer; 
+            font-weight: 600; 
+            transition: background 0.2s;
+        }
+        button:hover { background: #0066cc; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .typing-indicator { 
+            font-size: 0.85em; 
+            color: #888; 
+            margin-bottom: 5px; 
+            margin-left: 20px;
+            font-style: italic;
+            height: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="chat-container">
+        <div class="chat-header">Agno Research Assistant</div>
+        <div class="chat-history" id="chat-history">
+            <div class="message assistant">
+                <div class="message-bubble">Hello! I am your AI research assistant. Ask me anything!</div>
+            </div>
+        </div>
+        <div class="typing-indicator" id="typing-indicator"></div>
+        <div class="input-area">
+            <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off">
+            <button onclick="sendMessage()" id="send-btn">Send</button>
+        </div>
+    </div>
+
+    <script>
+        let sessionId = null;
+        const chatHistory = document.getElementById('chat-history');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const typingIndicator = document.getElementById('typing-indicator');
+
+        // Configure Marked.js (Optional: make links open in new tab)
+        marked.use({
+            renderer: {
+                link(href, title, text) {
+                    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+                }
+            }
+        });
+
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        async function sendMessage() {
+            const text = messageInput.value.trim();
+            if (!text) return;
+
+            // Add User Message
+            addMessageToUI('user', text); // User text is plain text
+            messageInput.value = '';
+            setLoading(true);
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        message: text,
+                        session_id: sessionId 
+                    })
+                });
+
+                if (!response.ok) throw new Error('Network response was not ok');
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                // Create container for assistant message
+                const bubble = addMessageToUI('assistant', '');
+                
+                // Variable to accumulate the full markdown text
+                let fullMarkdown = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const jsonStr = line.slice(6);
+                            if (jsonStr.trim() === '[DONE]') continue;
+
+                            try {
+                                const data = JSON.parse(jsonStr);
+                                
+                                if (data.type === 'start') {
+                                    sessionId = data.session_id;
+                                } else if (data.type === 'token') {
+                                    // 1. Append token to full markdown string
+                                    fullMarkdown += data.content;
+                                    
+                                    // 2. Convert Markdown to HTML and inject
+                                    // We re-render the whole block on every token to ensure 
+                                    // bolding/lists close properly as they stream in.
+                                    bubble.innerHTML = marked.parse(fullMarkdown);
+                                    
+                                    // Auto scroll
+                                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                                } else if (data.type === 'error') {
+                                    bubble.innerHTML += `<br><span style="color:red">[Error: ${data.error}]</span>`;
+                                }
+                            } catch (e) {
+                                console.error('JSON Parse error', e);
+                            }
+                        }
+                    }
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                addMessageToUI('assistant', 'Sorry, something went wrong connecting to the server.');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function addMessageToUI(role, content) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${role}`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+            
+            // For user, plain text. For assistant, we allow HTML (rendered from markdown)
+            if (role === 'user') {
+                bubble.textContent = content;
+            } else {
+                bubble.innerHTML = content; 
+            }
+            
+            msgDiv.appendChild(bubble);
+            chatHistory.appendChild(msgDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+            return bubble; // Return the bubble so we can update it during streaming
+        }
+
+        function setLoading(isLoading) {
+            messageInput.disabled = isLoading;
+            sendBtn.disabled = isLoading;
+            typingIndicator.textContent = isLoading ? 'Assistant is thinking...' : '';
+            if (!isLoading) messageInput.focus();
+        }
+    </script>
+</body>
+</html>
