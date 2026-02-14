@@ -1,6 +1,7 @@
 # Agno Research Assistant
 
 A streaming AI chat application powered by Agno v2 framework with FastAPI backend and real-time web interface.
+Demo Video : https://drive.google.com/file/d/1w8ALlzZnnOuXw4lN_hJhfKzICkiepGO4/view?usp=sharing
 
 ## Features
 
